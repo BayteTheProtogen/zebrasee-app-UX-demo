@@ -1,6 +1,8 @@
 Server running on http://localhost:3000
 A user connected
 A user connected
-Command received: { type: 'trigger-stop' }
+Command received: { type: 'imu-override-left' }
+Command received: { type: 'imu-override-right' }
+Command received: { type: 'trigger-safe' }
 User disconnected
 User disconnected

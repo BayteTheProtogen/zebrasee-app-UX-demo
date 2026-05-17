@@ -22,9 +22,8 @@ let initialAlpha = null;
 let targetAngle = 45;
 
 let audioCtx = null;
-let oscillator = null;
-let gainNode = null;
 let beepInterval = null;
+let resultInterval = null;
 
 const translations = {
     pl: {
@@ -78,22 +77,25 @@ function initAudio() {
     if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
 }
 
 function startBeeping(side) {
     stopBeeping();
-    const frequency = side === 'left' ? 440 : 660; // Different pitch for left/right
+    const baseFreq = side === 'left' ? 400 : 800;
 
     beepInterval = setInterval(() => {
         const now = audioCtx.currentTime;
         const osc = audioCtx.createOscillator();
         const g = audioCtx.createGain();
 
-        // Progress affects pitch and speed
         const progress = rotationProgress[currentPhase] / targetAngle;
-        osc.frequency.setValueAtTime(frequency + (progress * 200), now);
+        osc.frequency.setValueAtTime(baseFreq + (progress * 300), now);
+        osc.type = side === 'left' ? 'square' : 'triangle';
 
-        g.gain.setValueAtTime(0.1, now);
+        g.gain.setValueAtTime(0.05, now);
         g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
 
         osc.connect(g);
@@ -101,18 +103,56 @@ function startBeeping(side) {
 
         osc.start();
         osc.stop(now + 0.1);
-    }, Math.max(100, 500 - ( (rotationProgress[currentPhase] / targetAngle) * 400 )));
+    }, Math.max(80, 400 - ( (rotationProgress[currentPhase] / targetAngle) * 320 )));
 }
 
 function stopBeeping() {
     if (beepInterval) clearInterval(beepInterval);
+    if (resultInterval) clearInterval(resultInterval);
+}
+
+// Result Audio
+function startResultAudio(type) {
+    stopBeeping();
+    if (type === 'stop') {
+        // Alarming low pulse
+        resultInterval = setInterval(() => {
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+            g.gain.setValueAtTime(0.3, now);
+            g.gain.linearRampToValueAtTime(0, now + 0.4);
+            osc.connect(g);
+            g.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(now + 0.4);
+        }, 500);
+    } else {
+        // Fast high-pitched ticking like crossing signal
+        resultInterval = setInterval(() => {
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1200, now);
+            g.gain.setValueAtTime(0.2, now);
+            g.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.connect(g);
+            g.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(now + 0.05);
+        }, 150);
+    }
 }
 
 // IMU Logic
-function handleMotion(event) {
+function handleOrientation(event) {
     if (!isScanning) return;
 
-    let alpha = event.alpha; // Z-axis rotation [0, 360]
+    let alpha = event.alpha;
     if (initialAlpha === null) {
         initialAlpha = alpha;
         return;
@@ -123,21 +163,15 @@ function handleMotion(event) {
     if (diff < -180) diff += 360;
 
     if (currentPhase === 'left') {
-        // We want negative diff (rotating left)
         let progress = Math.min(targetAngle, Math.max(0, -diff));
         rotationProgress.left = progress;
         updateUIProgress(progress);
-        if (progress >= targetAngle) {
-            completePhase();
-        }
+        if (progress >= targetAngle) completePhase();
     } else {
-        // We want positive diff (rotating right)
         let progress = Math.min(targetAngle, Math.max(0, diff));
         rotationProgress.right = progress;
         updateUIProgress(progress);
-        if (progress >= targetAngle) {
-            completePhase();
-        }
+        if (progress >= targetAngle) completePhase();
     }
 }
 
@@ -149,8 +183,8 @@ function updateUIProgress(val) {
 function completePhase() {
     if (currentPhase === 'left') {
         currentPhase = 'right';
-        initialAlpha = null; // Reset reference
-        arrowUI.style.transform = 'scaleX(-1)'; // Flip arrow for right
+        initialAlpha = null;
+        arrowUI.style.transform = 'scaleX(-1)';
         announce(translations[currentLang].scan_right);
         startBeeping('right');
     } else {
@@ -161,67 +195,48 @@ function completePhase() {
 function finishScanning() {
     isScanning = false;
     stopBeeping();
-    // Wait for controller decision
 }
 
 function triggerResult(type) {
+    isScanning = false;
+    stopBeeping();
     showScreen('result');
     const resScreen = screens.result;
     resScreen.className = 'screen result-screen active ' + type;
 
     if (type === 'stop') {
         resultText.innerText = translations[currentLang].stop;
-        resultIconContainer.innerHTML = `<svg viewBox="0 0 100 100" class="result-icon"><circle cx="50" cy="50" r="45" fill="white"/><path d="M30 30 L70 70 M70 30 L30 70" stroke="red" stroke-width="10"/></svg>`; // Placeholder stop icon
+        resultIconContainer.innerHTML = `<svg viewBox="0 0 100 100" class="result-icon"><circle cx="50" cy="50" r="45" fill="white"/><path d="M30 30 L70 70 M70 30 L30 70" stroke="red" stroke-width="10"/></svg>`;
         announce(translations[currentLang].approach);
-        playResultAudio('stop');
     } else {
         resultText.innerText = translations[currentLang].safe;
-        resultIconContainer.innerHTML = `<svg viewBox="0 0 100 100" class="result-icon"><circle cx="50" cy="50" r="45" fill="white"/><path d="M50 20 L50 80 M30 50 L50 80 L70 50" stroke="green" stroke-width="10" fill="none"/></svg>`; // Placeholder safe icon
+        resultIconContainer.innerHTML = `<svg viewBox="0 0 100 100" class="result-icon"><circle cx="50" cy="50" r="45" fill="white"/><path d="M50 20 L50 80 M30 50 L50 80 L70 50" stroke="green" stroke-width="10" fill="none"/></svg>`;
         announce(translations[currentLang].safe);
-        playResultAudio('safe');
     }
-}
-
-function playResultAudio(type) {
-    const now = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    osc.connect(g);
-    g.connect(audioCtx.destination);
-
-    if (type === 'stop') {
-        osc.frequency.setValueAtTime(200, now);
-        osc.frequency.exponentialRampToValueAtTime(100, now + 0.5);
-    } else {
-        osc.frequency.setValueAtTime(880, now);
-        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.5);
-    }
-    g.gain.setValueAtTime(0.2, now);
-    g.gain.linearRampToValueAtTime(0, now + 0.5);
-    osc.start();
-    osc.stop(now + 0.5);
+    startResultAudio(type);
 }
 
 // Controller Commands
 let pendingResult = null;
+let manualInterval = null;
 
 socket.on('command', (data) => {
+    console.log("Phone received command:", data.type);
     switch(data.type) {
         case 'trigger-stop':
-            if (isScanning) {
-                finishScanning();
-                triggerResult('stop');
-            } else if (screens.scan.classList.contains('active')) {
-                triggerResult('stop');
-            } else {
-                pendingResult = 'stop';
-            }
+            pendingResult = null;
+            triggerResult('stop');
             break;
         case 'trigger-safe':
-            if (!isScanning && screens.scan.classList.contains('active')) {
-                triggerResult('safe');
+            if (isScanning || screens.scan.classList.contains('active')) {
+                pendingResult = 'safe'; // Wait for scan to finish if scanning
+                // If scanning is NOT active but we are on scan screen (finished but no result), trigger immediately
+                if (!isScanning) {
+                    triggerResult('safe');
+                    pendingResult = null;
+                }
             } else {
-                pendingResult = 'safe';
+                triggerResult('safe');
             }
             break;
         case 'reset':
@@ -229,14 +244,28 @@ socket.on('command', (data) => {
             break;
         case 'imu-override-left':
             if (isScanning && currentPhase === 'left') {
-                rotationProgress.left = targetAngle;
-                completePhase();
+                if (manualInterval) clearInterval(manualInterval);
+                manualInterval = setInterval(() => {
+                    rotationProgress.left += 2;
+                    updateUIProgress(rotationProgress.left);
+                    if (rotationProgress.left >= targetAngle) {
+                        clearInterval(manualInterval);
+                        completePhase();
+                    }
+                }, 50);
             }
             break;
         case 'imu-override-right':
             if (isScanning && currentPhase === 'right') {
-                rotationProgress.right = targetAngle;
-                completePhase();
+                if (manualInterval) clearInterval(manualInterval);
+                manualInterval = setInterval(() => {
+                    rotationProgress.right += 2;
+                    updateUIProgress(rotationProgress.right);
+                    if (rotationProgress.right >= targetAngle) {
+                        clearInterval(manualInterval);
+                        completePhase();
+                    }
+                }, 50);
             }
             break;
         case 'toggle-camera-override':
@@ -255,25 +284,24 @@ btnStart.addEventListener('click', async () => {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         cameraFeed.srcObject = stream;
-    } catch (e) {
-        console.error("Camera access denied", e);
-    }
+    } catch (e) { console.error("Camera access denied", e); }
 
     // Request IMU
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
             const permission = await DeviceOrientationEvent.requestPermission();
             if (permission === 'granted') {
-                window.addEventListener('deviceorientation', handleMotion);
+                window.addEventListener('deviceorientation', handleOrientation);
             }
         } catch (e) { console.error(e); }
     } else {
-        window.addEventListener('deviceorientation', handleMotion);
+        window.addEventListener('deviceorientation', handleOrientation);
     }
 
     isScanning = true;
     currentPhase = 'left';
     rotationProgress = { left: 0, right: 0 };
+    initialAlpha = null;
     updateUIProgress(0);
     arrowUI.style.transform = 'scaleX(1)';
     showScreen('scan');
@@ -281,10 +309,10 @@ btnStart.addEventListener('click', async () => {
     startBeeping('left');
 });
 
-// Check if scan finished and result was already triggered
+// Check for pending result
 setInterval(() => {
     if (!isScanning && screens.scan.classList.contains('active') && pendingResult) {
         triggerResult(pendingResult);
         pendingResult = null;
     }
-}, 500);
+}, 200);
