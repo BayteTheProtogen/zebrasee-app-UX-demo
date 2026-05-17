@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Skanuj">
+    <link rel="apple-touch-icon" href="/assets/logo.png">
+    <link rel="manifest" href="/manifest.json">
+    <title>Skanuj - UX Demo</title>
+    <style>
+        :root {
+            --bg-dark: #1a1a1a;
+            --accent-blue: #007AFF;
+            --accent-yellow: #FFD60A;
+            --accent-red: #FF3B30;
+            --accent-green: #34C759;
+            --text-white: #FFFFFF;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-dark);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-white);
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #app {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .screen {
+            display: none;
+            width: 100%;
+            height: 100%;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 40px 20px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* Start Screen */
+        #start-screen {
+            background-color: var(--bg-dark);
+        }
+
+        .logo-container img {
+            width: 120px;
+            height: 120px;
+            border-radius: 24px;
+        }
+
+        .scan-button {
+            width: 200px;
+            height: 200px;
+            background-color: var(--accent-blue);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 0 30px rgba(0, 122, 255, 0.5);
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Scanning Screen */
+        #scan-screen {
+            background-color: var(--bg-dark);
+        }
+
+        .instruction-text {
+            font-size: 28px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
+        .arrow-container {
+            position: relative;
+            width: 150px;
+            height: 150px;
+        }
+
+        .arrow-svg {
+            width: 100%;
+            height: 100%;
+            fill: white;
+        }
+
+        .arrow-fill {
+            fill: var(--accent-blue);
+            transition: clip-path 0.1s linear;
+        }
+
+        .scanning-btn-indicator {
+            width: 90%;
+            height: 60px;
+            background-color: var(--accent-yellow);
+            color: black;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            font-weight: bold;
+            font-size: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* Result Screens */
+        .result-screen {
+            padding-top: 60px;
+        }
+
+        .result-screen.stop {
+            background: linear-gradient(to bottom, var(--accent-red) 0%, var(--bg-dark) 40%);
+        }
+
+        .result-screen.safe {
+            background: linear-gradient(to bottom, var(--accent-green) 0%, var(--bg-dark) 40%);
+        }
+
+        .result-icon {
+            width: 120px;
+            height: 120px;
+        }
+
+        .result-text {
+            font-size: 48px;
+            font-weight: 900;
+            margin: 20px 0;
+        }
+
+        .video-container {
+            width: 90%;
+            height: 200px;
+            background-color: #333;
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        #camera-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .camera-override {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, #ff00ff, #00ffff, #ff00ff);
+            background-size: 200% 200%;
+            animation: gradientMove 5s ease infinite;
+            filter: blur(20px);
+            display: none;
+        }
+
+        @keyframes gradientMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Start Screen -->
+        <div id="start-screen" class="screen active">
+            <div class="logo-container">
+                <img src="/assets/logo.png" alt="Logo Auge">
+            </div>
+            <div class="scan-button" id="btn-start" role="button" aria-label="Skanuj">
+                SKANUJ
+            </div>
+            <div></div> <!-- Spacer -->
+        </div>
+
+        <!-- Scan Screen -->
+        <div id="scan-screen" class="screen">
+            <div class="logo-container">
+                <img src="/assets/logo.png" alt="Logo Auge">
+            </div>
+            <div class="instruction-text" id="instruction-text">
+                Poruszaj<br>urządzeniem
+            </div>
+            <div class="arrow-container" id="arrow-ui">
+                <svg viewBox="0 0 100 100" class="arrow-svg">
+                    <!-- Base Arrow (White) -->
+                    <path id="arrow-path-white" d="M10 50 L70 50 L70 30 L95 50 L70 70 L70 50" stroke="white" stroke-width="8" fill="white" />
+                    <!-- Fill Arrow (Blue) -->
+                    <path id="arrow-path-fill" class="arrow-fill" d="M10 50 L70 50 L70 30 L95 50 L70 70 L70 50" fill="var(--accent-blue)" clip-path="inset(0 100% 0 0)" />
+                </svg>
+            </div>
+            <div class="scanning-btn-indicator">
+                <span id="scanning-label">Skanuję...</span>
+            </div>
+        </div>
+
+        <!-- Result Screen -->
+        <div id="result-screen" class="screen result-screen">
+            <div id="result-icon-container">
+                <!-- Icon will be inserted here -->
+            </div>
+            <div class="result-text" id="result-text">STOP</div>
+            <div class="video-container">
+                <video id="camera-feed" autoplay playsinline></video>
+                <div id="camera-override" class="camera-override"></div>
+            </div>
+        </div>
+
+        <!-- Aria Live Region -->
+        <div id="announcer" class="sr-only" aria-live="assertive"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

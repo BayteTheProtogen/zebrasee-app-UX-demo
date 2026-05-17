@@ -1,0 +1,6 @@
+Server running on http://localhost:3000
+A user connected
+A user connected
+Command received: { type: 'trigger-stop' }
+User disconnected
+User disconnected

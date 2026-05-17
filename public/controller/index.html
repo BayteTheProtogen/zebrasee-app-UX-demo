@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skanuj - Kontroler</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+        }
+        h1 { font-size: 20px; text-align: center; }
+        .btn {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn:active { opacity: 0.7; }
+        .btn-stop { background-color: #FF3B30; color: white; }
+        .btn-safe { background-color: #34C759; color: white; }
+        .btn-reset { background-color: #8E8E93; color: white; }
+        .btn-lang { background-color: #007AFF; color: white; }
+        .btn-imu { background-color: #5856D6; color: white; }
+        .btn-cam { background-color: #FF9500; color: white; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .status { margin-top: 10px; font-size: 14px; color: #666; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h1>Skanuj - Panel Sterowania</h1>
+
+        <button class="btn btn-stop" onclick="sendCommand('trigger-stop')">Wykryto auto (STOP)</button>
+        <button class="btn btn-safe" onclick="sendCommand('trigger-safe')">Brak auta (SAFE)</button>
+        <button class="btn btn-reset" onclick="sendCommand('reset')">Reset / Powrót</button>
+
+        <hr>
+        <div class="grid">
+            <button class="btn btn-imu" onclick="sendCommand('imu-override-left')">Manual: Lewo</button>
+            <button class="btn btn-imu" onclick="sendCommand('imu-override-right')">Manual: Prawo</button>
+        </div>
+
+        <button class="btn btn-cam" onclick="sendCommand('toggle-camera-override')">Przełącz Kamera / Gradient</button>
+        <button class="btn btn-lang" onclick="sendCommand('toggle-language')">Przełącz Język (PL/EN)</button>
+
+        <div class="status" id="status">Połączono</div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        function sendCommand(cmd) {
+            socket.emit('command', { type: cmd });
+        }
+        socket.on('connect', () => { document.getElementById('status').innerText = 'Połączono'; });
+        socket.on('disconnect', () => { document.getElementById('status').innerText = 'Rozłączono'; });
+    </script>
+</body>
+</html>

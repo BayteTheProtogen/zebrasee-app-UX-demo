@@ -1,0 +1,15 @@
+{
+  "name": "Skanuj UX Demo",
+  "short_name": "Skanuj",
+  "start_url": "/phone",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
+  "icons": [
+    {
+      "src": "/assets/logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}
