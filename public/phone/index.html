@@ -24,11 +24,11 @@
         .logo-container img { width: 120px; height: 120px; border-radius: 24px; margin-top: 20px; }
         .scan-button { width: 220px; height: 220px; background-color: var(--accent-blue); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: bold; box-shadow: 0 0 40px rgba(0, 122, 255, 0.6); cursor: pointer; }
         .instruction-text { font-size: 28px; font-weight: bold; }
-        .arrow-container { width: 200px; height: 200px; transition: transform 0.3s ease; }
+        .arrow-container { width: 200px; height: 200px; }
         .arrow-svg { width: 100%; height: 100%; }
         .scanning-btn-indicator { width: 90%; height: 60px; background-color: var(--accent-yellow); color: black; border-radius: 12px; display: flex; align-items: center; padding: 0 20px; font-weight: bold; font-size: 20px; margin-bottom: 20px; }
-        .result-screen.stop { background: linear-gradient(to bottom, var(--accent-red) 0%, var(--bg-dark) 45%); }
-        .result-screen.safe { background: linear-gradient(to bottom, var(--accent-green) 0%, var(--bg-dark) 45%); }
+        .screen.stop { background: linear-gradient(to bottom, var(--accent-red) 0%, var(--bg-dark) 45%) !important; }
+        .screen.safe { background: linear-gradient(to bottom, var(--accent-green) 0%, var(--bg-dark) 45%) !important; }
         .result-icon { width: 140px; height: 140px; }
         .result-text { font-size: 54px; font-weight: 900; margin: 10px 0; }
         .video-container { width: 90%; height: 220px; background-color: #333; border-radius: 16px; overflow: hidden; margin-bottom: 20px; position: relative; }
@@ -49,17 +49,21 @@
         <div id="scan-screen" class="screen">
             <div class="logo-container"><img src="/assets/logo.png" alt="Logo"></div>
             <div class="instruction-text" id="instruction-text">Poruszaj<br>urządzeniem</div>
-            <div class="arrow-container" id="arrow-ui">
+            <div class="arrow-container">
                 <svg viewBox="0 0 100 100" class="arrow-svg">
                     <defs>
-                        <clipPath id="arrow-clip">
-                            <rect id="fill-clip-rect" x="0" y="0" width="0" height="100" />
+                        <clipPath id="arrow-clip-shape">
+                            <path d="M10 50 L70 50 L70 30 L95 50 L70 70 L70 50" />
                         </clipPath>
                     </defs>
-                    <!-- Background Arrow (White) -->
-                    <path d="M10 50 L70 50 L70 30 L95 50 L70 70 L70 50" stroke="white" stroke-width="8" fill="white" stroke-linejoin="round" stroke-linecap="round" />
-                    <!-- Fill Arrow (Blue) -->
-                    <path d="M10 50 L70 50 L70 30 L95 50 L70 70 L70 50" fill="var(--accent-blue)" stroke="var(--accent-blue)" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" clip-path="url(#arrow-clip)" />
+                    <g id="arrow-group">
+                        <!-- Base Arrow (White) -->
+                        <path d="M10 50 L70 50 L70 30 L95 50 L70 70 L70 50" stroke="white" stroke-width="8" fill="white" stroke-linejoin="round" stroke-linecap="round" />
+                        <!-- Fill Arrow (Blue) -->
+                        <rect id="arrow-fill-rect" x="0" y="0" width="0" height="100" fill="var(--accent-blue)" clip-path="url(#arrow-clip-shape)" />
+                        <!-- Stroke Outline -->
+                        <path d="M10 50 L70 50 L70 30 L95 50 L70 70 L70 50" stroke="white" stroke-width="8" fill="none" stroke-linejoin="round" stroke-linecap="round" />
+                    </g>
                 </svg>
             </div>
             <div class="scanning-btn-indicator"><span id="scanning-label">Skanuję...</span></div>

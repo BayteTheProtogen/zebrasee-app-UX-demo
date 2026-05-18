@@ -3,13 +3,12 @@ const btnStart = document.getElementById('btn-start');
 const screens = { start: document.getElementById('start-screen'), scan: document.getElementById('scan-screen'), result: document.getElementById('result-screen') };
 const announcer = document.getElementById('announcer');
 const instructionText = document.getElementById('instruction-text');
-const arrowUI = document.getElementById('arrow-ui');
+const arrowFillRect = document.getElementById('arrow-fill-rect');
 const resultText = document.getElementById('result-text');
 const resultIconContainer = document.getElementById('result-icon-container');
 const cameraFeed = document.getElementById('camera-feed');
 const cameraOverride = document.getElementById('camera-override');
 const debugInfo = document.getElementById('debug-info');
-const fillClipRect = document.getElementById('fill-clip-rect');
 
 let currentLang = 'pl';
 let isScanning = false;
@@ -19,7 +18,7 @@ let initialAlpha = null;
 let targetAngle = 45;
 
 let audioCtx = null;
-let beepInterval = null;
+let scanTimeout = null;
 let resultInterval = null;
 let resultCount = 0;
 
@@ -46,60 +45,56 @@ function initAudio() {
     if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
-function startBeeping(side) {
-    stopBeeping();
-    const baseFreq = side === 'left' ? 440 : 660;
-    beepInterval = setInterval(() => {
-        const now = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        const progress = rotationProgress[currentPhase] / targetAngle;
-        osc.frequency.setValueAtTime(baseFreq + (progress * 200), now);
-        osc.type = 'sine';
-        g.gain.setValueAtTime(0.1, now);
-        g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-        osc.connect(g);
-        g.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(now + 0.1);
-    }, Math.max(100, 500 - ( (rotationProgress[currentPhase] / targetAngle) * 400 )));
+function stopAllAudio() {
+    clearTimeout(scanTimeout);
+    clearInterval(resultInterval);
 }
 
-function stopBeeping() {
-    if (beepInterval) clearInterval(beepInterval);
-    if (resultInterval) clearInterval(resultInterval);
+function scheduleNextBeep() {
+    if (!isScanning) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+
+    const progress = rotationProgress[currentPhase] / targetAngle;
+    const baseFreq = currentPhase === 'left' ? 440 : 660;
+
+    osc.frequency.setValueAtTime(baseFreq + (progress * 250), now);
+    osc.type = 'sine';
+    g.gain.setValueAtTime(0.12, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+    osc.connect(g);
+    g.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(now + 0.1);
+
+    const delay = Math.max(70, 500 - (progress * 430));
+    scanTimeout = setTimeout(scheduleNextBeep, delay);
 }
 
 function startResultAudio(type) {
-    stopBeeping();
+    stopAllAudio();
     resultCount = 0;
     const maxReps = 5;
     if (type === 'stop') {
-        // More urgent STOP: Rapid double pulse, medium-low frequency
+        // High-pitched, aggressive trill for emergency
         resultInterval = setInterval(() => {
-            if (resultCount >= maxReps) { clearInterval(resultInterval); return; }
+            if (resultCount >= maxReps * 6) { clearInterval(resultInterval); return; }
             const now = audioCtx.currentTime;
-
-            const playPulse = (offset, freq) => {
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, now + offset);
-                g.gain.setValueAtTime(0.3, now + offset);
-                g.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.2);
-                osc.connect(g);
-                g.connect(audioCtx.destination);
-                osc.start(now + offset);
-                osc.stop(now + offset + 0.2);
-            };
-
-            playPulse(0, 300);
-            playPulse(0.25, 250);
-
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(resultCount % 2 === 0 ? 1500 : 900, now);
+            g.gain.setValueAtTime(0.4, now);
+            g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+            osc.connect(g);
+            g.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(now + 0.08);
             resultCount++;
-        }, 1000);
+        }, 100);
     } else {
-        // Fast high-pitched ticking like crossing signal
         resultInterval = setInterval(() => {
             if (resultCount >= maxReps * 2) { clearInterval(resultInterval); return; }
             const now = audioCtx.currentTime;
@@ -107,7 +102,7 @@ function startResultAudio(type) {
             const g = audioCtx.createGain();
             osc.type = 'sine';
             osc.frequency.setValueAtTime(880, now);
-            g.gain.setValueAtTime(0.15, now);
+            g.gain.setValueAtTime(0.2, now);
             g.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
             osc.connect(g);
             g.connect(audioCtx.destination);
@@ -121,14 +116,8 @@ function startResultAudio(type) {
 function handleOrientation(event) {
     if (!isScanning) return;
     let alpha = event.alpha;
-    if (event.webkitCompassHeading !== undefined) {
-        alpha = 360 - event.webkitCompassHeading;
-    }
-
-    if (alpha === null || alpha === undefined) {
-        debugInfo.innerText = "IMU: Waiting for alpha...";
-        return;
-    }
+    if (event.webkitCompassHeading !== undefined) alpha = 360 - event.webkitCompassHeading;
+    if (alpha === null || alpha === undefined) { debugInfo.innerText = "IMU: Null Data"; return; }
     if (initialAlpha === null) { initialAlpha = alpha; return; }
 
     let diff = alpha - initialAlpha;
@@ -152,20 +141,17 @@ function handleOrientation(event) {
 
 function updateUIProgress(val) {
     const percent = (val / targetAngle) * 100;
-    // Map 0-100% to X=10 to X=95 (arrow path coordinates)
-    const arrowStartX = 10;
-    const arrowEndX = 95;
-    const clipWidth = arrowStartX + (percent / 100) * (arrowEndX - arrowStartX);
-    if (fillClipRect) fillClipRect.setAttribute('width', clipWidth);
+    if (arrowFillRect) arrowFillRect.setAttribute('width', percent);
 }
 
 function completePhase() {
     if (currentPhase === 'left') {
         currentPhase = 'right';
         initialAlpha = null;
-        arrowUI.style.transform = 'scaleX(1)'; // Point right
+        rotationProgress.right = 0;
+        updateUIProgress(0);
+        document.getElementById('arrow-group').setAttribute('transform', 'rotate(0 50 50)');
         announce(translations[currentLang].scan_right);
-        startBeeping('right');
     } else {
         finishScanning();
     }
@@ -173,12 +159,12 @@ function completePhase() {
 
 function finishScanning() {
     isScanning = false;
-    stopBeeping();
+    stopAllAudio();
 }
 
 function triggerResult(type) {
     isScanning = false;
-    stopBeeping();
+    stopAllAudio();
     showScreen('result');
     screens.result.className = 'screen active ' + type;
     if (type === 'stop') {
@@ -210,7 +196,7 @@ socket.on('command', (data) => {
             if (isScanning && currentPhase === 'left') {
                 if (manualInterval) clearInterval(manualInterval);
                 manualInterval = setInterval(() => {
-                    rotationProgress.left += 1.5;
+                    rotationProgress.left += 2;
                     updateUIProgress(rotationProgress.left);
                     if (rotationProgress.left >= targetAngle) { clearInterval(manualInterval); completePhase(); }
                 }, 40);
@@ -220,7 +206,7 @@ socket.on('command', (data) => {
             if (isScanning && currentPhase === 'right') {
                 if (manualInterval) clearInterval(manualInterval);
                 manualInterval = setInterval(() => {
-                    rotationProgress.right += 1.5;
+                    rotationProgress.right += 2;
                     updateUIProgress(rotationProgress.right);
                     if (rotationProgress.right >= targetAngle) { clearInterval(manualInterval); completePhase(); }
                 }, 40);
@@ -236,21 +222,20 @@ btnStart.addEventListener('click', async () => {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         cameraFeed.srcObject = stream;
-    } catch (e) { console.error("Camera error:", e); }
+    } catch (e) { console.error(e); }
 
-    const attachIMU = () => {
+    const startIMU = () => {
         window.addEventListener('deviceorientation', handleOrientation, true);
-        debugInfo.innerText = "IMU: Event Listener Attached";
+        debugInfo.innerText = "IMU: Attached";
     };
 
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission().then(permission => {
-            if (permission === 'granted') {
-                attachIMU();
-            } else { debugInfo.innerText = "IMU: Permission Denied"; }
-        }).catch(e => { debugInfo.innerText = "IMU: Request Error"; console.error(e); });
+            if (permission === 'granted') startIMU();
+            else debugInfo.innerText = "IMU: Permission Denied";
+        }).catch(e => { debugInfo.innerText = "IMU: Err " + e; });
     } else {
-        attachIMU();
+        startIMU();
     }
 
     isScanning = true;
@@ -258,10 +243,10 @@ btnStart.addEventListener('click', async () => {
     rotationProgress = { left: 0, right: 0 };
     initialAlpha = null;
     updateUIProgress(0);
-    arrowUI.style.transform = 'scaleX(-1)'; // Start pointing left
+    document.getElementById('arrow-group').setAttribute('transform', 'rotate(180 50 50)');
     showScreen('scan');
     announce(translations[currentLang].scan_left);
-    startBeeping('left');
+    scheduleNextBeep();
 });
 
 setInterval(() => { if (!isScanning && screens.scan.classList.contains('active') && pendingResult) { triggerResult(pendingResult); pendingResult = null; } }, 200);
