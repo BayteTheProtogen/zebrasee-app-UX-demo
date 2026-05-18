@@ -75,22 +75,31 @@ function startResultAudio(type) {
     resultCount = 0;
     const maxReps = 5;
     if (type === 'stop') {
+        // More urgent STOP: Rapid double pulse, medium-low frequency
         resultInterval = setInterval(() => {
             if (resultCount >= maxReps) { clearInterval(resultInterval); return; }
             const now = audioCtx.currentTime;
-            const osc = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(150, now);
-            g.gain.setValueAtTime(0.25, now);
-            g.gain.linearRampToValueAtTime(0, now + 0.6);
-            osc.connect(g);
-            g.connect(audioCtx.destination);
-            osc.start();
-            osc.stop(now + 0.6);
+
+            const playPulse = (offset, freq) => {
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + offset);
+                g.gain.setValueAtTime(0.3, now + offset);
+                g.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.2);
+                osc.connect(g);
+                g.connect(audioCtx.destination);
+                osc.start(now + offset);
+                osc.stop(now + offset + 0.2);
+            };
+
+            playPulse(0, 300);
+            playPulse(0.25, 250);
+
             resultCount++;
         }, 1000);
     } else {
+        // Fast high-pitched ticking like crossing signal
         resultInterval = setInterval(() => {
             if (resultCount >= maxReps * 2) { clearInterval(resultInterval); return; }
             const now = audioCtx.currentTime;
@@ -99,11 +108,11 @@ function startResultAudio(type) {
             osc.type = 'sine';
             osc.frequency.setValueAtTime(880, now);
             g.gain.setValueAtTime(0.15, now);
-            g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+            g.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
             osc.connect(g);
             g.connect(audioCtx.destination);
             osc.start();
-            osc.stop(now + 0.08);
+            osc.stop(now + 0.05);
             resultCount++;
         }, 150);
     }
@@ -112,8 +121,14 @@ function startResultAudio(type) {
 function handleOrientation(event) {
     if (!isScanning) return;
     let alpha = event.alpha;
-    if (event.webkitCompassHeading !== undefined) alpha = 360 - event.webkitCompassHeading;
-    if (alpha === null || alpha === undefined) { debugInfo.innerText = "IMU: No Data"; return; }
+    if (event.webkitCompassHeading !== undefined) {
+        alpha = 360 - event.webkitCompassHeading;
+    }
+
+    if (alpha === null || alpha === undefined) {
+        debugInfo.innerText = "IMU: Waiting for alpha...";
+        return;
+    }
     if (initialAlpha === null) { initialAlpha = alpha; return; }
 
     let diff = alpha - initialAlpha;
@@ -123,13 +138,11 @@ function handleOrientation(event) {
     debugInfo.innerText = `IMU: ${Math.round(alpha)} (diff: ${Math.round(diff)})`;
 
     if (currentPhase === 'left') {
-        // Move left -> diff is negative
         let progress = Math.min(targetAngle, Math.max(0, -diff));
         rotationProgress.left = progress;
         updateUIProgress(progress);
         if (progress >= targetAngle) completePhase();
     } else {
-        // Move right -> diff is positive
         let progress = Math.min(targetAngle, Math.max(0, diff));
         rotationProgress.right = progress;
         updateUIProgress(progress);
@@ -139,7 +152,11 @@ function handleOrientation(event) {
 
 function updateUIProgress(val) {
     const percent = (val / targetAngle) * 100;
-    if (fillClipRect) fillClipRect.setAttribute('width', percent);
+    // Map 0-100% to X=10 to X=95 (arrow path coordinates)
+    const arrowStartX = 10;
+    const arrowEndX = 95;
+    const clipWidth = arrowStartX + (percent / 100) * (arrowEndX - arrowStartX);
+    if (fillClipRect) fillClipRect.setAttribute('width', clipWidth);
 }
 
 function completePhase() {
@@ -193,20 +210,20 @@ socket.on('command', (data) => {
             if (isScanning && currentPhase === 'left') {
                 if (manualInterval) clearInterval(manualInterval);
                 manualInterval = setInterval(() => {
-                    rotationProgress.left += 1.2;
+                    rotationProgress.left += 1.5;
                     updateUIProgress(rotationProgress.left);
                     if (rotationProgress.left >= targetAngle) { clearInterval(manualInterval); completePhase(); }
-                }, 30);
+                }, 40);
             }
             break;
         case 'imu-override-right':
             if (isScanning && currentPhase === 'right') {
                 if (manualInterval) clearInterval(manualInterval);
                 manualInterval = setInterval(() => {
-                    rotationProgress.right += 1.2;
+                    rotationProgress.right += 1.5;
                     updateUIProgress(rotationProgress.right);
                     if (rotationProgress.right >= targetAngle) { clearInterval(manualInterval); completePhase(); }
-                }, 30);
+                }, 40);
             }
             break;
         case 'toggle-camera-override': cameraOverride.style.display = cameraOverride.style.display === 'block' ? 'none' : 'block'; break;
@@ -219,18 +236,21 @@ btnStart.addEventListener('click', async () => {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         cameraFeed.srcObject = stream;
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Camera error:", e); }
+
+    const attachIMU = () => {
+        window.addEventListener('deviceorientation', handleOrientation, true);
+        debugInfo.innerText = "IMU: Event Listener Attached";
+    };
 
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         DeviceOrientationEvent.requestPermission().then(permission => {
             if (permission === 'granted') {
-                window.addEventListener('deviceorientation', handleOrientation, true);
-                debugInfo.innerText = "IMU: OK";
-            } else { debugInfo.innerText = "IMU: Denied"; }
-        }).catch(e => { debugInfo.innerText = "IMU: Error"; });
+                attachIMU();
+            } else { debugInfo.innerText = "IMU: Permission Denied"; }
+        }).catch(e => { debugInfo.innerText = "IMU: Request Error"; console.error(e); });
     } else {
-        window.addEventListener('deviceorientation', handleOrientation, true);
-        debugInfo.innerText = "IMU: Ready";
+        attachIMU();
     }
 
     isScanning = true;
